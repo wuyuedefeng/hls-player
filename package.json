@@ -13,6 +13,8 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^1.0.1",
     "@tsconfig/svelte": "^3.0.0",
+    "m3u8-parser": "^4.7.1",
+    "mux.js": "^6.2.0",
     "sass": "^1.54.0",
     "svelte": "^3.49.0",
     "svelte-check": "^2.8.0",
