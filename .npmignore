@@ -1,0 +1,7 @@
+src
+public
+index.html
+svelte.config.js
+tsconfig.json
+tsconfig.node.json
+vite.config.ts
