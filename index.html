@@ -7,15 +7,22 @@
     <title>Vite + Svelte + TS</title>
   </head>
   <body>
-    <hls-player src=""></hls-player>
+    <hls-player></hls-player>
     <script type="module" src="/src/main.ts"></script>
     <!--<script src="./dist/hls-player.js"></script>-->
     <script>
       const el = document.querySelector('hls-player')
-      setTimeout(() => {
+      el.addEventListener('beforeMount', event => {
+        el.options = {debug: true, autoplay: true, muted: true}
+        const videoEl = event.detail.video
+        console.log('mount', event.detail, videoEl)
         // https://hls-js.netlify.app/demo/
         el.src = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'
-      }, 3000)
+      }, {once: true})
+      el.addEventListener('mounted', event => {
+        const videoEl = event.detail.video
+        console.log('mounted', event.detail, videoEl)
+      }, {once: true})
     </script>
   </body>
 </html>
