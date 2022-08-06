@@ -13,7 +13,7 @@
     <script>
       const el = document.querySelector('hls-player')
       el.addEventListener('beforeMount', event => {
-        el.options = {debug: true, autoplay: true, muted: true}
+        el.options = {debug: false, autoplay: true, muted: true}
         const videoEl = event.detail.video
         console.log('mount', event.detail, videoEl)
         // https://hls-js.netlify.app/demo/

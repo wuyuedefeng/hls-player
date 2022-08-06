@@ -41,6 +41,7 @@ export class Player {
     private mediaUrl?: URL;
     private mediaManifest?: any;
     private loadedSegments: any[];
+    private partLastSegmentInfo?: { finished: boolean, segment: any, dataBuffer: any };
     private downloadSegmentsInterval?: ReturnType<typeof setTimeout>;
     private firstSegmentDataBufferAppendFinishCallback?: () => Promise<void>;
     // mediaSource
@@ -98,10 +99,13 @@ export class Player {
         this.state = { paused: !this.options.autoplay, muted: this.options.muted, volume: this.videoEl.volume, seeking: true, beginLoadTime: 0, endLoadTime: 0, currentTime: 0, totalDuration: 0, }
         this.events.onState(this.state, ['paused', 'muted', 'volume', 'seeking', 'beginLoadTime', 'endLoadTime', 'currentTime', 'totalDuration'])
         this.validVersion = 0;
-        this.loadedSegments =[]
+        this.loadedSegments = []
+        this.partLastSegmentInfo = null
         // this.mediaSource = new MediaSource()
         this.transmuxer = new muxjs.mp4.Transmuxer({
             remux: true, // remux选项默认为true，将源数据的音频视频混合为mp4，设为false则不混合
+            baseMediaDecodeTime: 0,
+            keepOriginalTimestamps: false,
         })
         if (this.options.controls) { this.videoEl.controls = true }
         if (this.options.muted) { this.videoEl.muted = true }
@@ -109,10 +113,13 @@ export class Player {
         this.videoEl.ontimeupdate = () => {
             const currentTime = this.videoEl.currentTime
             if (this.state.beginLoadTime <= currentTime && this.state.endLoadTime > currentTime) {
+                if (this.partLastSegmentInfo?.finished && this.partLastSegmentInfo?.segment && !this.state.seeking && currentTime > this.partLastSegmentInfo.segment._startTime) {
+                    return this.seekToTime(currentTime + 0.5, true)
+                }
                 Object.assign(this.state, {currentTime: this.videoEl.currentTime})
                 this.events.onState(this.state, ['currentTime'])
             } else if (!this.state.seeking) {
-                this.seekToTime(currentTime)
+                return this.seekToTime(currentTime)
             }
         }
         this.videoEl.onvolumechange = (event) => {
@@ -123,6 +130,7 @@ export class Player {
     private setValidVersion(validVersion) {
         // this.transmuxer = new muxjs.mp4.Transmuxer({remux: true, baseMediaDecodeTime: 0})
         this.loadedSegments = []
+        this.partLastSegmentInfo = null
         this.firstSegmentDataBufferAppendFinishCallback = null
         this.validVersion = validVersion
         return validVersion
@@ -251,66 +259,74 @@ export class Player {
         const transmuxer = this.transmuxer
         for (let idx in this.mediaManifest.segments) {
             const segment = this.mediaManifest.segments[idx]
-            if (this.validVersion === validVersion &&
-                this.loadedSegments === loadedSegments &&
-                loadedSegments.indexOf(segment) === -1 &&
-                segment._startTime >= this.state.endLoadTime &&
-                segment._startTime < this.state.currentTime + 60 // 最多提前缓存当前播放时间点的前60s
-            ) {
-                // const segmentUrl = new URL(segment.uri, this.mediaUrl.href)
-                let dataBuffer = await this.fetchVersionSegmentDataBuffer(validVersion, segment)
-                dataBuffer = await this.events.onLoadSegmentDataBuffer(segment, dataBuffer) || dataBuffer
-                const appendDataBuffer = async (dataBuffer: Uint8Array) => {
-                    return new Promise<void>(async (resolve, reject) => {
-                        this.sourceBuffer.onupdateend = () => {
-                            if (this.validVersion === validVersion) {
-                                // if (this.options.debug) {
-                                //     const buffered = this.sourceBuffer.buffered
-                                //     console.debug('loaded time computed from buffer', buffered.start(0), buffered.end(0), buffered.length)
-                                // }
-                                if (!this.loadedSegments.length) { // first append
-                                    if (this.firstSegmentDataBufferAppendFinishCallback) { this.firstSegmentDataBufferAppendFinishCallback() }
-                                }
-                                loadedSegments.push(segment)
-                                if (this.mediaManifest.endList && Number(idx) === this.mediaManifest.segments.length - 1) {
-                                    if (this.options.debug) { console.debug('load finished') }
-                                    this.mediaSource.endOfStream()
-                                }
-                                Object.assign(this.state, { endLoadTime: this.state.endLoadTime + segment.duration })
-                                this.events.onState(this.state, ['endLoadTime'])
-                            }
-                            return resolve()
-                        }
-                        transmuxer.off('data')
-                        transmuxer.on('data', async (segment) => {
-                            if (this.validVersion === validVersion) {
-                                if (!loadedSegments.length) { // first append
-                                    const data = new Uint8Array(segment.initSegment.byteLength + segment.data.byteLength);
-                                    data.set(segment.initSegment, 0);
-                                    data.set(segment.data, segment.initSegment.byteLength);
-                                    // console.log(muxjs.mp4.tools.inspect(data));
-                                    // if (!this.options.live) {
-                                    //     // 先设定新chunk加入的位置，比如第x秒处
-                                    //     this.sourceBuffer.timestampOffset = this.state.beginLoadTime
+            if (this.validVersion === validVersion && this.loadedSegments === loadedSegments && loadedSegments.indexOf(segment) === -1 && segment._startTime >= this.state.endLoadTime && !this.partLastSegmentInfo?.finished) {
+                if (segment._startTime < this.state.currentTime + 60 || this.state.endLoadTime - this.state.beginLoadTime > 150) { // 最多提前缓存当前播放时间点的前60s, 或者总缓存时间超过150s
+                    // const segmentUrl = new URL(segment.uri, this.mediaUrl.href)
+                    let dataBuffer = null
+                    if (this.partLastSegmentInfo?.segment === segment && this.partLastSegmentInfo?.dataBuffer) {
+                        dataBuffer = this.partLastSegmentInfo.dataBuffer
+                    } else {
+                        dataBuffer = await this.fetchVersionSegmentDataBuffer(validVersion, segment)
+                        dataBuffer = await this.events.onLoadSegmentDataBuffer(segment, dataBuffer) || dataBuffer
+                    }
+                    const appendDataBuffer = async (dataBuffer: Uint8Array) => {
+                        return new Promise<void>(async (resolve, reject) => {
+                            this.sourceBuffer.onupdateend = () => {
+                                if (this.validVersion === validVersion) {
+                                    // if (this.options.debug) {
+                                    //     const buffered = this.sourceBuffer.buffered
+                                    //     console.debug('loaded time computed from buffer', buffered.start(0), buffered.end(0), buffered.length)
                                     // }
-                                    this.sourceBuffer.appendBuffer(data)
-                                    this.events.onLoadFirstSegment(segment, muxjs.mp4.tools.inspect(data))
-                                    this.events.onLoadSegment(segment)
-                                    await this.events.onReady()
-                                } else {
-                                    this.sourceBuffer.appendBuffer(new Uint8Array(segment.data))
-                                    this.events.onLoadSegment(segment)
+                                    if (!this.loadedSegments.length) { // first append
+                                        if (this.firstSegmentDataBufferAppendFinishCallback) { this.firstSegmentDataBufferAppendFinishCallback() }
+                                    }
+                                    loadedSegments.push(segment)
+                                    if (this.mediaManifest.endList && Number(idx) === this.mediaManifest.segments.length - 1) {
+                                        if (this.options.debug) { console.debug('load finished') }
+                                        this.mediaSource.endOfStream()
+                                    }
+                                    Object.assign(this.state, {endLoadTime: this.state.endLoadTime + segment.duration })
+                                    this.events.onState(this.state, ['endLoadTime'])
+                                    this.partLastSegmentInfo = {finished: false, segment: segment, dataBuffer: dataBuffer}
                                 }
-                            } else {
-                                reject()
+                                return resolve()
                             }
+                            transmuxer.off('data')
+                            transmuxer.on('data', async (segment) => {
+                                if (this.validVersion === validVersion) {
+                                    if (!loadedSegments.length) { // first append
+                                        const data = new Uint8Array(segment.initSegment.byteLength + segment.data.byteLength);
+                                        data.set(segment.initSegment, 0);
+                                        data.set(segment.data, segment.initSegment.byteLength);
+                                        // console.log(muxjs.mp4.tools.inspect(data));
+                                        // if (!this.options.live) {
+                                        //     // 先设定新chunk加入的位置，比如第x秒处
+                                        //     this.sourceBuffer.timestampOffset = this.state.beginLoadTime
+                                        // }
+                                        this.sourceBuffer.appendBuffer(data)
+                                        this.events.onLoadFirstSegment(segment, muxjs.mp4.tools.inspect(data))
+                                        this.events.onLoadSegment(segment)
+                                        await this.events.onReady()
+                                    } else {
+                                        this.sourceBuffer.appendBuffer(new Uint8Array(segment.data))
+                                        this.events.onLoadSegment(segment)
+                                    }
+                                } else {
+                                    reject()
+                                }
+                            })
+                            transmuxer.push(new Uint8Array(dataBuffer))
+                            transmuxer.flush()
                         })
-                        transmuxer.push(new Uint8Array(dataBuffer))
-                        transmuxer.flush()
-                    })
-                }
-                if (this.validVersion === validVersion) {
-                    await appendDataBuffer(new Uint8Array(dataBuffer))
+                    }
+                    if (this.validVersion === validVersion) {
+                        await appendDataBuffer(new Uint8Array(dataBuffer))
+                    }
+                } else {
+                    if (this.partLastSegmentInfo) {
+                        this.partLastSegmentInfo = {...this.partLastSegmentInfo, finished: true}
+                    }
+                    break
                 }
             }
         }
@@ -348,12 +364,12 @@ export class Player {
             }
         }
     }
-    async seekToTime(toTime: number) {
+    async seekToTime(toTime: number, forceReload = false) {
         this.state.seeking = true
-        toTime = Math.max(0, Math.min(this.state.totalDuration - 3, toTime))
+        toTime = Math.max(0, Math.min(this.state.totalDuration - 1, toTime))
         this.videoEl.currentTime = toTime
         const isLoad = this.state.beginLoadTime <= toTime && this.state.endLoadTime > toTime
-        if (isLoad) {
+        if (isLoad && !forceReload) {
             Object.assign(this.state, {currentTime: toTime})
             this.events.onState(this.state, ['currentTime'])
             // await new Promise(resolve => setTimeout(resolve, 500))

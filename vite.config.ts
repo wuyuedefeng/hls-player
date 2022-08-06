@@ -8,6 +8,7 @@ export default defineConfig({
       entry: './src/main.ts',
       name: 'HlsPlayer',
       formats: ['es', 'cjs', 'umd', 'iife'],
+      fileName: 'hls-player'
     }
   },
   plugins: [

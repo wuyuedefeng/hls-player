@@ -1,9 +1,14 @@
 {
-  "name": "hls-player",
-  "private": true,
-  "version": "0.0.1",
+  "name": "hls-player.js",
+  "private": false,
+  "version": "0.0.2",
+  "description": "web component of m3u8 player",
   "type": "module",
   "main": "./dist/hls-player.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wuyuedefeng/hls-player"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

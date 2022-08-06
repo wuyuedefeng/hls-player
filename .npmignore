@@ -5,3 +5,6 @@ svelte.config.js
 tsconfig.json
 tsconfig.node.json
 vite.config.ts
+
+.vscode
+.idea
