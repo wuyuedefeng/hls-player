@@ -1,12 +1,13 @@
 <script lang="ts">
     // https://www.sveltejs.cn/tutorial/basics
-    import {createEventDispatcher, onMount, onDestroy} from 'svelte'
+    import {createEventDispatcher, onMount, onDestroy, tick} from 'svelte'
     import type {PlayerState, PlayerOptions, PlayerEvents} from './HlsPlayer/index'
     import {Player} from './HlsPlayer/index'
 
     export let src: string = '';
-    export let options: any = {};
+    export let options: PlayerOptions = {controls: true, autoplay: false, muted: false, debug: false};
     export let events: PlayerEvents = {};
+    export let delayMount: number = 0;
 
     const dispatch = createEventDispatcher();
 
@@ -19,7 +20,6 @@
         if (src) { player && player.setSrc(src) }
         oldSrc = src
     }
-    $: loading = !!playerState?.seeking
 
     // const preMinute = () => {
     //     if (playerState) {
@@ -32,7 +32,8 @@
     //     }
     // }
 
-    onMount(() => {
+    onMount(async () => {
+        await new Promise(resolve => setTimeout(resolve, Number(delayMount)))
         const mountEvent = new CustomEvent('beforeMount', {
             detail: {video: videoEl,},
             bubbles: true, cancelable: true,
@@ -42,7 +43,7 @@
         // disable contextmenu
         // if (videoEl.addEventListener) { videoEl.addEventListener('contextmenu', (event) => event.preventDefault() ) }
         // else { videoEl['attachEvent']('oncontextmenu', () => window.event.returnValue = false) }
-        player = new Player(videoEl, {controls: true, autoplay: false, muted: false, live: false, debug: false, ...options}, {
+        player = new Player(videoEl, {controls: true, autoplay: false, muted: false, debug: false, ...options}, {
             ...events,
 		        onState: async (state: PlayerState, types: string[]) => {
                 playerState = state;
@@ -85,7 +86,6 @@
 <!--	<button on:click={() => player?.seekToTime(0)}>from start</button>-->
 <!--	<button on:click={() => player?.play()}>play</button>-->
 <!--	<button on:click={() => player?.pause()}>pause</button>-->
-<!--	<span>loading: {loading}</span>-->
 <!--</div>-->
 
 <!--<style lang="scss">-->
