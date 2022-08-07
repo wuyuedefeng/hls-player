@@ -4,6 +4,7 @@ export interface PlayerOptions {
     muted: boolean;
     // live: boolean;
     debug: boolean;
+    codecs: string;
 }
 export interface PlayerEvents {
     onInit?: (videoEl: HTMLVideoElement) => void;
@@ -50,10 +51,11 @@ export class Player {
     // mux.js
     private transmuxer?: muxjs.mp4.Transmuxer;
 
-    static isSupported (codecs = null) {
+    static isSupported (codecs: string) {
         //const mimeCodec = 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"'
+        //const mimeCodec = 'video/mp4; codecs="avc1.64001E'
         //const mimeCodec = 'video/webm; codecs="opus, vp9"'
-        return 'MediaSource' in window && (codecs ? MediaSource.isTypeSupported(codecs) : true)
+        return 'MediaSource' in window && (codecs ? MediaSource.isTypeSupported(codecs) : false)
         // other methods can use canPlayType
         // https://www.w3school.com.cn/tags/av_met_canplaytype.asp
     }
@@ -151,9 +153,14 @@ export class Player {
             this.mediaSource = null
         }
         this.mediaSource = new MediaSource()
-        const mediaSourceInitPromise: Promise<void> = new Promise<void>((resolve) => {
+        const mediaSourceInitPromise: Promise<void> = new Promise<void>((resolve, reject) => {
             this.mediaSource.addEventListener('sourceopen', () => {
-                this.sourceBuffer = this.mediaSource.addSourceBuffer('video/mp4; codecs="avc1.42E01E, mp4a.40.2"')
+                if (Player.isSupported(this.options.codecs)) {
+                    this.sourceBuffer = this.mediaSource.addSourceBuffer(this.options.codecs)
+                } else {
+                    reject(new Error(`not support codecs: ${this.options.codecs}`))
+                }
+
                 // this.sourceBuffer.mode = this.options.live ? 'sequence' : 'segments'
                 this.sourceBuffer.mode = 'segments'
                 this.events.onInit(this.videoEl)
@@ -168,6 +175,10 @@ export class Player {
         await this.parseVersionMasterWithFirstMediaUrl(this.validVersion)
         if (this.mediaManifest.endList) {
             if (this.options.debug) { console.debug('segments定义获取完毕') }
+            if (this.mediaManifest.segments.length === 0) {
+                if (this.options.debug) { console.debug('segments为空, 播放结束') }
+                return this.mediaSource.endOfStream()
+            }
         }
         this.mediaSource.duration = this.state.totalDuration
         this.mediaSource.setLiveSeekableRange(0, this.state.totalDuration)
@@ -403,7 +414,9 @@ export class Player {
                 this.sourceBuffer.timestampOffset = this.state.beginLoadTime
             } else if (this.mediaSource.readyState === 'ended') { // https://developer.mozilla.org/en-US/docs/Web/API/SourceBuffer/changeType
                 await new Promise<void>((resolve) => {
-                    this.sourceBuffer.changeType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"')
+                    if (Player.isSupported(this.options.codecs)) {
+                        this.sourceBuffer.changeType(this.options.codecs)
+                    }
                     this.mediaSource.addEventListener('sourceopen', () => {
                         resolve()
                     }, {once: true})
