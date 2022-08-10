@@ -5,7 +5,7 @@
     import {Player} from './HlsPlayer/index'
 
     export let src: string = '';
-    export let options: PlayerOptions = {controls: true, autoplay: false, muted: false, debug: false, codecs: 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"'};
+    export let options: PlayerOptions = {controls: true, autoplay: false, muted: false, debug: false, mediaType: 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"'};
     export let events: PlayerEvents = {};
     export let delayMount: number = 0;
 
@@ -43,7 +43,7 @@
         // disable contextmenu
         // if (videoEl.addEventListener) { videoEl.addEventListener('contextmenu', (event) => event.preventDefault() ) }
         // else { videoEl['attachEvent']('oncontextmenu', () => window.event.returnValue = false) }
-        player = new Player(videoEl, {controls: true, autoplay: false, muted: false, debug: false, codecs: 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"', ...options}, {
+        player = new Player(videoEl, {controls: true, autoplay: false, muted: false, debug: false, mediaType: 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"', ...options}, {
             ...events,
 		        onState: async (state: PlayerState, types: string[]) => {
                 playerState = state;

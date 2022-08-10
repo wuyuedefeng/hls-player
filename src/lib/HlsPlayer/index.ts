@@ -4,7 +4,7 @@ export interface PlayerOptions {
     muted: boolean;
     // live: boolean;
     debug: boolean;
-    codecs: string;
+    mediaType: string;
 }
 export interface PlayerEvents {
     onInit?: (videoEl: HTMLVideoElement) => void;
@@ -51,11 +51,11 @@ export class Player {
     // mux.js
     private transmuxer?: muxjs.mp4.Transmuxer;
 
-    static isSupported (codecs: string) {
-        //const mimeCodec = 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"'
-        //const mimeCodec = 'video/mp4; codecs="avc1.64001E'
-        //const mimeCodec = 'video/webm; codecs="opus, vp9"'
-        return 'MediaSource' in window && (codecs ? MediaSource.isTypeSupported(codecs) : false)
+    static isSupported (mediaType: string) {
+        //const mediaType = 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"'
+        //const mediaType = 'video/mp4; codecs="avc1.64001E'
+        //const mediaType = 'video/webm; codecs="opus, vp9"'
+        return 'MediaSource' in window && (mediaType ? MediaSource.isTypeSupported(mediaType) : false)
         // other methods can use canPlayType
         // https://www.w3school.com.cn/tags/av_met_canplaytype.asp
     }
@@ -155,10 +155,10 @@ export class Player {
         this.mediaSource = new MediaSource()
         const mediaSourceInitPromise: Promise<void> = new Promise<void>((resolve, reject) => {
             this.mediaSource.addEventListener('sourceopen', () => {
-                if (Player.isSupported(this.options.codecs)) {
-                    this.sourceBuffer = this.mediaSource.addSourceBuffer(this.options.codecs)
+                if (Player.isSupported(this.options.mediaType)) {
+                    this.sourceBuffer = this.mediaSource.addSourceBuffer(this.options.mediaType)
                 } else {
-                    reject(new Error(`not support codecs: ${this.options.codecs}`))
+                    reject(new Error(`not support mediaType: ${this.options.mediaType}`))
                 }
 
                 // this.sourceBuffer.mode = this.options.live ? 'sequence' : 'segments'
@@ -414,8 +414,8 @@ export class Player {
                 this.sourceBuffer.timestampOffset = this.state.beginLoadTime
             } else if (this.mediaSource.readyState === 'ended') { // https://developer.mozilla.org/en-US/docs/Web/API/SourceBuffer/changeType
                 await new Promise<void>((resolve) => {
-                    if (Player.isSupported(this.options.codecs)) {
-                        this.sourceBuffer.changeType(this.options.codecs)
+                    if (Player.isSupported(this.options.mediaType)) {
+                        this.sourceBuffer.changeType(this.options.mediaType)
                     }
                     this.mediaSource.addEventListener('sourceopen', () => {
                         resolve()
